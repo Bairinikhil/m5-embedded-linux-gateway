@@ -21,7 +21,8 @@ app = FastAPI(title='M5 Embedded Linux Gateway', version='0.1.0')
 
 
 def init_db():
-    with sqlite3.connect(DB_PATH) as db:
+    db = sqlite3.connect(DB_PATH)
+    try:
         db.execute('''CREATE TABLE IF NOT EXISTS telemetry (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           received_at TEXT NOT NULL,
@@ -30,6 +31,9 @@ def init_db():
           payload_json TEXT NOT NULL
         )''')
         db.execute('CREATE INDEX IF NOT EXISTS idx_telemetry_device_time ON telemetry(device_id, received_at)')
+        db.commit()
+    finally:
+        db.close()
 
 
 def store_message(topic, payload):
@@ -39,9 +43,14 @@ def store_message(topic, payload):
     except (UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError):
         return False
     received_at = datetime.now(timezone.utc).isoformat()
-    with db_lock, sqlite3.connect(DB_PATH) as db:
-        db.execute('INSERT INTO telemetry(received_at,topic,device_id,payload_json) VALUES(?,?,?,?)',
-                   (received_at, topic, device_id, json.dumps(parsed, separators=(',', ':'))))
+    with db_lock:
+        db = sqlite3.connect(DB_PATH)
+        try:
+            db.execute('INSERT INTO telemetry(received_at,topic,device_id,payload_json) VALUES(?,?,?,?)',
+                       (received_at, topic, device_id, json.dumps(parsed, separators=(',', ':'))))
+            db.commit()
+        finally:
+            db.close()
     return True
 
 
@@ -69,9 +78,13 @@ def start_mqtt():
 
 @app.get('/health')
 def health():
-    with db_lock, sqlite3.connect(DB_PATH) as db:
-        count = db.execute('SELECT COUNT(*) FROM telemetry').fetchone()[0]
-        latest = db.execute('SELECT device_id,received_at FROM telemetry ORDER BY id DESC LIMIT 1').fetchone()
+    with db_lock:
+        db = sqlite3.connect(DB_PATH)
+        try:
+            count = db.execute('SELECT COUNT(*) FROM telemetry').fetchone()[0]
+            latest = db.execute('SELECT device_id,received_at FROM telemetry ORDER BY id DESC LIMIT 1').fetchone()
+        finally:
+            db.close()
     return {'gateway': 'ok', 'messages': count,
             'latest_device': latest[0] if latest else None,
             'latest_received_at': latest[1] if latest else None}
@@ -79,9 +92,13 @@ def health():
 
 @app.get('/devices')
 def devices():
-    with db_lock, sqlite3.connect(DB_PATH) as db:
-        rows = db.execute('''SELECT device_id, MAX(received_at), COUNT(*)
-                             FROM telemetry GROUP BY device_id ORDER BY device_id''').fetchall()
+    with db_lock:
+        db = sqlite3.connect(DB_PATH)
+        try:
+            rows = db.execute('''SELECT device_id, MAX(received_at), COUNT(*)
+                                 FROM telemetry GROUP BY device_id ORDER BY device_id''').fetchall()
+        finally:
+            db.close()
     return [{'device_id': row[0], 'last_seen': row[1], 'messages': row[2]} for row in rows]
 
 
