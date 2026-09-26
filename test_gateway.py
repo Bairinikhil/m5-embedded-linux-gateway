@@ -6,6 +6,12 @@ from unittest.mock import patch
 
 
 class GatewayTests(unittest.TestCase):
+    def test_tls_requires_all_paths(self):
+        import gateway
+        with patch.object(gateway, 'MQTT_TLS_CA', ''), patch.object(gateway, 'MQTT_TLS_CERT', ''), patch.object(gateway, 'MQTT_TLS_KEY', ''):
+            with self.assertRaisesRegex(RuntimeError, 'missing'):
+                gateway.configure_tls(object())
+
     def test_store_valid_message(self):
         with tempfile.TemporaryDirectory() as folder:
             import gateway

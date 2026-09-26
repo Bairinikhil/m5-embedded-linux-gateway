@@ -11,6 +11,8 @@ The gateway subscribes to `devices/+/health`, validates JSON telemetry, stores i
 
 It does not modify the device, publish commands, or expose the database to the network.
 
+Plain MQTT on port 1883 is the default. The gateway also supports certificate-verified mutual TLS as an opt-in mode; certificate files stay local and are never committed.
+
 ## Run it in WSL2 Ubuntu
 
 ```bash
@@ -30,7 +32,20 @@ curl http://127.0.0.1:8081/health
 curl http://127.0.0.1:8081/devices
 ```
 
-The MQTT broker must already be running and reachable from WSL2. For the secure project, the next milestone will add TLS certificates through environment variables; certificates and passwords will never be committed.
+The MQTT broker must already be running and reachable from WSL2.
+
+For the secure broker, use local certificate paths from the secure-device project:
+
+```bash
+export MQTT_PORT=8883
+export MQTT_TLS=true
+export MQTT_TLS_CA=/path/to/ca.crt
+export MQTT_TLS_CERT=/path/to/observer.crt
+export MQTT_TLS_KEY=/path/to/observer.key
+python gateway.py
+```
+
+The gateway verifies the broker certificate and presents the observer client certificate. If a TLS variable or file is missing, startup fails clearly instead of silently falling back to an insecure connection. See [`.env.example`](.env.example); never commit real keys or certificates.
 
 ## Checks
 
@@ -38,4 +53,4 @@ The MQTT broker must already be running and reachable from WSL2. For the secure 
 python -m unittest -v
 ```
 
-The tests cover valid telemetry storage and rejection of payloads without a device ID. Future milestones will add TLS MQTT, offline buffering, reconnect behavior, Docker, systemd, and gateway-to-device commands.
+The tests cover valid telemetry storage, rejection of payloads without a device ID, and TLS configuration validation. Future milestones will add offline buffering, reconnect behavior, Docker, systemd, and gateway-to-device commands.

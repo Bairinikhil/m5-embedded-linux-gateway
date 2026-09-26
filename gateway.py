@@ -13,6 +13,10 @@ DB_PATH = Path(os.getenv('GATEWAY_DB', 'gateway.db'))
 MQTT_HOST = os.getenv('MQTT_HOST', '127.0.0.1')
 MQTT_PORT = int(os.getenv('MQTT_PORT', '1883'))
 MQTT_TOPIC = os.getenv('MQTT_TOPIC', 'devices/+/health')
+MQTT_TLS = os.getenv('MQTT_TLS', '').lower() in {'1', 'true', 'yes', 'on'}
+MQTT_TLS_CA = os.getenv('MQTT_TLS_CA', '')
+MQTT_TLS_CERT = os.getenv('MQTT_TLS_CERT', '')
+MQTT_TLS_KEY = os.getenv('MQTT_TLS_KEY', '')
 HTTP_HOST = os.getenv('HTTP_HOST', '127.0.0.1')
 HTTP_PORT = int(os.getenv('HTTP_PORT', '8081'))
 
@@ -67,8 +71,22 @@ def on_message(client, userdata, message):
         print(f'Ignored invalid telemetry: {message.topic}', flush=True)
 
 
+def configure_tls(client):
+    paths = {'MQTT_TLS_CA': MQTT_TLS_CA, 'MQTT_TLS_CERT': MQTT_TLS_CERT, 'MQTT_TLS_KEY': MQTT_TLS_KEY}
+    missing = [name for name, value in paths.items() if not value]
+    if missing:
+        raise RuntimeError(f'MQTT_TLS is enabled but missing: {", ".join(missing)}')
+    missing_files = [f'{name}={value}' for name, value in paths.items() if not Path(value).is_file()]
+    if missing_files:
+        raise RuntimeError('MQTT TLS file not found: ' + ', '.join(missing_files))
+    client.tls_set(ca_certs=MQTT_TLS_CA, certfile=MQTT_TLS_CERT, keyfile=MQTT_TLS_KEY)
+    print('MQTT TLS enabled with certificate verification', flush=True)
+
+
 def start_mqtt():
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id='m5-linux-gateway')
+    if MQTT_TLS:
+        configure_tls(client)
     client.on_connect = on_connect
     client.on_message = on_message
     client.connect(MQTT_HOST, MQTT_PORT, keepalive=30)
